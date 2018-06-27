@@ -6,9 +6,24 @@ __lua__
 -- todo: make the paddle have a "bump" animation against the side and have a "bump" sound effect
 -- todo: implement bounding_box_collision
 
-lives=3
 gameover=false
 sfx(4,1)
+
+lives={
+  value=3,
+  init=function(self)
+    self.value=3
+  end,
+  lose=function(self)
+    sfx(2)
+    self.value-=1 
+  end,
+  draw=function(self)
+    for i=1, self.value do
+      spr(001,90+i*8,5)
+    end    
+  end
+}
 
 score={
   value=0,
@@ -18,6 +33,9 @@ score={
   end,
   reset=function(self)
     self.value=0
+  end,
+  draw=function(self)
+    print("you: " .. self.value,6,12,15)
   end
 }
 
@@ -30,12 +48,8 @@ paddle={
   reset=function(self)
     self.x=52
     self.y=122
-    self.visible=true
   end,
-  hide=function(self)
-    self.visible=false
-  end,
-  move=function(self)
+  update=function(self)
     if btn(0) then
       self.x-=6
       if (self.x < 0) then
@@ -47,6 +61,9 @@ paddle={
         self.x = 127-self.w
       end
     end
+  end,
+  draw=function(self)
+    rectfill(self.x,self.y,self.x+self.w,self.y+self.w,15)
   end
 }
 
@@ -56,7 +73,9 @@ ball = {
   size=3,
   xdir=5,
   ydir=-3,
-  visible=true,
+  draw=function(self)
+    circfill(self.x,self.y,self.size,15)
+  end,
   update=function(self)
     self:bounce_off_wall()
     self:bounce_off_paddle()
@@ -68,14 +87,6 @@ ball = {
     self.y=64
     self.xdir=5
     self.ydir=-3
-    self.visible=true
-  end,
-  hide=function(self)
-    self.y=64
-    self.x=64
-    self.ydir=0
-    self.xdir=0
-    self.visible=false
   end,
   move=function(self)
     self.x+=self.xdir
@@ -114,13 +125,10 @@ ball = {
   end,
   handle_lost=function(self)
     if self:is_lost() then
-      if lives>0 then
-        --next life
-        sfx(2)
+      if lives.value > 0 then
+        lives:lose()
         self.y=24
-        lives-=1
       else
-        --game over
         handle_gameover()
       end
     end
@@ -129,19 +137,15 @@ ball = {
 
 high_score={
   value=0,
-  get=function(self)
-    -- value=dget(1)
-    internal_value=dget(1)
-    return internal_value
+  init=function(self)
+    self.value = dget(1)
   end,
   set=function(self,score)
-    if (self:is_new_high_score(score)) then
-      dset(1,score)
-      self.value = score
-    end
+    dset(1,score)
+    self.value = score
   end,
-  is_new_high_score=function(self,score)
-    return score > self.get()
+  draw=function(self)
+    print("hi : " .. self.value,6,6,15)
   end
 }
 
@@ -152,11 +156,10 @@ function handle_gameover()
   sfx(-1,1)
   -- play death sfx
   sfx(3)
-  -- hide ball/paddle
-  ball:hide()
-  paddle:hide()
   -- set high score
-  high_score:set(score.value)
+  if (score.value > high_score.value) then
+    high_score:set(score.value)
+  end
 end
 
 function listen_for_reset()
@@ -169,19 +172,51 @@ function reset_game()
   score:reset()
   paddle:reset()
   ball:reset()
-  lives=3
+  lives:init()
   gameover=false
   sfx(4,1)
 end
 
+game_over_notice={
+  draw=function()
+    -- x_pos=middle_of_screen-(number_of_characters/2)*pixels_per_character
+    print("game over", 64-(9/2)*4, 61, 15)
+    print("press \x8e to retry", 64-(17/2)*4, 67, 15)
+  end
+}
+
+function make_scene(characters)
+  return {
+    characters=characters,
+    init=function(self)
+      for character in all(self.characters) do
+        character:init()
+      end
+    end,  
+    update=function(self)
+      for character in all(self.characters) do
+        if (character.update) then
+          character:update()
+        end
+      end
+    end,
+    draw=function(self)
+      for character in all(self.characters) do
+        character:draw()
+      end
+    end
+  }
+end
+
+gamplay_scene = make_scene({paddle, ball, high_score, score, lives})
+gameover_scene = make_scene({high_score, score, game_over_notice})
+
 function _init()
   cartdata("squashy_values")
-  high_score.value = high_score:get()
 end
 
 function _update()
-	paddle:move()
-	ball:update()
+  gamplay_scene:update()
   if (gameover == true) then
     listen_for_reset()
   end
@@ -189,31 +224,11 @@ end
 
 function _draw()
   -- clear the screen
-  rectfill(0,0,128,128,3)
-
-	-- draw the lives
-	for i=1, lives do
-		spr(001,90+i*8,5)
-	end
-
-	-- draw the score
-  print("hi : " .. high_score.value,6,6,15)
-  print("you: " .. score.value,6,12,15)
-
+  cls(3)
   if (gameover == true) then
-    -- x_pos=middle_of_screen-(number_of_characters/2)*pixels_per_character
-    print("game over", 64-(9/2)*4, 61, 15)
-    print("press \x8e to retry", 64-(17/2)*4, 67, 15)
-  end
-
-  -- draw the paddle
-  if paddle.visible == true then
-    rectfill(paddle.x,paddle.y,paddle.x+paddle.w,paddle.y+paddle.w,15)
-  end
-
-  -- draw the ball
-  if ball.visible == true then
-    circfill(ball.x,ball.y,ball.size,15)
+    gameover_scene:draw()
+  else
+    gamplay_scene:draw()
   end
 end
 
